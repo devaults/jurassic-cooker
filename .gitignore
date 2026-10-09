@@ -1,0 +1,7 @@
+# Playwright 产物（截图/录屏/trace，不入 git）
+# 约定见 .trae/skills/frontend/playwright-e2e/SKILL.md
+.screenshots/
+
+# 本机局部配置（覆盖 .trae/config.yaml 的默认值，不入 git）
+# 例：spec.artifacts.e2e_root 改产物根
+.trae/config.local.yaml

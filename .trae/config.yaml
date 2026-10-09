@@ -1,0 +1,97 @@
+# <repo>/.trae/config.yaml
+# ─────────────────────────────────────────────────────────────────────────
+# 流水线声明（**声明式元数据，脚本不读取**）
+#
+# 路径不需要在此配置：`scripts/render-templates.mjs` 全部自算——
+#   仓根       = 含 `.trae/` 目录的仓库根（脚本通过本文件位置自算，无需硬编码仓名）
+#   模板源     = <仓根>/specs/_template
+#   团队输出根 = <仓根>/specs（固定，只收 domains/<domain>/<feature>）
+#   个人输出根 = 本机 config.local.yaml 的 spec.personal.root（渲染时传 `--out-root <abs>`）
+#   知识库根   = 自动探测（兄弟目录约定命名 jurassic-knowledge / knowledge）
+#   项目注册表 = <知识库根>/tooling/project-registry.md
+# 命名不符约定时，渲染时用 `--knowledge <abs>` / `--registry <abs>` 传一次即可，
+# 无需落任何本地配置文件。
+#
+# 本文件供人与 AI 阅读：六阶段流水线、tasks / qa 拆分口径、签字冻结规则。
+# ─────────────────────────────────────────────────────────────────────────
+# 本机局部覆盖（local 优先）
+#   需要按本机 / 本团队习惯改默认值时，在**同目录**建 config.local.yaml
+#   （**已被 .gitignore 忽略，不入库、不随框架分发**），只写要改的键：
+#     - 合并规则：**local 已设置的键覆盖本文件同名键；未设置的键回落本文件默认值**
+#     - local 不存在（或全注释）时，行为与只读本文件完全一致
+#     - 覆盖对**任意键**生效（如 spec.artifacts.e2e_root、spec.signing.required…）
+#   示例见同目录 config.local.yaml 的注释模板。
+# ─────────────────────────────────────────────────────────────────────────
+
+spec:
+  # 六阶段流水线（顺序推进，下游只能引用已签字的上游版本号）
+  # 阶段 4 dev-backend 与阶段 5 dev-frontend 可并行
+  stages:
+    - requirements        # 阶段一：需求分析（产品主导）
+    - design-ui           # 阶段二：界面设计（UI 主导）
+    - design-contract     # 阶段三：接口契约（架构师主导）⭐ 同步闸口
+    - dev-backend         # 阶段四：后端开发（后端架构师主导）
+    - dev-frontend        # 阶段五：前端开发（前端架构师主导）
+    - qa                  # 阶段六：QA 验收（QA 主导）
+
+  # tasks 阶段拆成 backend/frontend 两套（解决前后端并行问题）
+  tasks:
+    layout: directory
+    tier_prefix:
+      backend: "B-"
+      frontend: "F-"
+    card_prefix: "T-"
+
+  qa:
+    layout: directory
+    card_prefix: "Q-"
+
+  # 签字冻结机制（仅团队正式 spec specs/domains/；个人 spec 落外置个人根，免签字）
+  signing:
+    required: true
+    block_keywords: ["草稿", "draft", "TODO"]
+    check_command: "node .trae/scripts/render-templates.mjs <path> --check-signing"  # 渲染后扫残留；CI 可挂此命令
+
+  # 个人通道（外置，不落本仓）：个人 spec（六阶段 11 文件）+ 个人 plan（单文件）
+  # root **不设默认值**，必须由使用方在本机 .trae/config.local.yaml 指定（例见该文件注释）；
+  # 未指定时个人通道不可用（无 --out-root 可传，AI 应提示先配置）。
+  # 脚本不读本文件：AI 读取 root 后转成 `--out-root <abs>` 传给 render-templates.mjs。
+  personal:
+    root: null              # 例：/abs/path/to/your-knowledge-base
+    spec_dir: "specs"       # 个人 spec 落 <root>/specs/<YYYY-MM>/<slug>/（11 文件）
+    plan_dir: "plans"       # 个人 plan 落 <root>/plans/<YYYY-MM>/<slug>.md（单文件）
+    signing:
+      required: false
+
+  # Plan 通道（轻量，小任务）：单文件计划，免签字、不分阶段、不拆任务卡
+  # 产物落 plans/<YYYY-MM>/<slug>.md（与 specs/ 平级）；模板与路线见下
+  # 升级判定：**任一命中即升级**（任一条件触发 = 必须停手转完整 spec）：
+  #   - 跨 ≥ 2 个项目仓（multi_project）
+  #   - 动接口契约 design-contract.md（前后端同步闸口）
+  #   - 需独立 QA 验收 或 签字留档 / 上线评审
+  #   - 拆出任务卡 > 5 / 预计改文件 > 10
+  # 详见 routes/plan-only.md（与本字段保持一致：任一命中即升）
+  plan:
+    layout: single-file
+    dir: "plans"
+    template: ".trae/templates/plan.md"
+    route: ".trae/prompts/routes/plan-only.md"
+    signing:
+      required: false
+    upgrade_when:
+      multi_project: 2         # 涉及项目仓 ≥ 2 个 → 升
+      touches_contract: true   # 动接口契约 → 升
+      needs_independent_qa: true  # 需独立 QA / 签字留档 → 升
+      max_task_cards: 5        # 拆出任务卡 > 5 → 升
+      max_files: 10            # 预计改文件 > 10 → 升
+
+  # E2E 产物根（Playwright 截图 / 录屏 / trace）；默认落 cooker（已 git 忽略）。
+  # 可用 config.local.yaml 的 spec.artifacts.e2e_root 覆盖（见文件头「本机局部覆盖」）。
+  artifacts:
+    e2e_root: "<cooker 仓根>/.screenshots"
+
+  # 模板渲染
+  render:
+    placeholder_syntax: '$\{...\}'
+    command: "node .trae/scripts/render-templates.mjs domains/<domain>/<feature>"
+    command_personal: "node .trae/scripts/render-templates.mjs specs/<YYYY-MM>/<slug> --out-root <spec.personal.root>"
